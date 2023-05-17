@@ -1,0 +1,10 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# ~~~~
+
+POST    /api/did/register               controllers.ServiceController.registerDid
+POST    /api/did/verify/twitter         controllers.ServiceController.verifyTwitter
+GET     /api/nojwt/did/user/:did        controllers.ServiceController.getIdentityInfoWithoutJwt(did:String)
+GET     /api/did/user                   controllers.ServiceController.getIdentityInfoWithJwt
+POST    /api/did/user/profile/update    controllers.ServiceController.updateIdentityProfileWithJwt
+

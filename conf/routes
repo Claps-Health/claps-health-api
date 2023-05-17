@@ -1,0 +1,21 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# ~~~~
+
+-> /v1          v1.Routes
+
+# Swagger Json
+GET     /swagger.json              controllers.ApiHelpController.getResources
+# Swagger UI
+GET     /docs/                     controllers.Assets.at(path="/public/swagger-ui",file="index.html")
+GET     /docs/swagger.json         controllers.ApiHelpController.getResources
+GET     /docs/*file                controllers.Assets.at(path="/public/swagger-ui",file)
+
+
+GET     /css/*file                 controllers.Assets.at(path="/public/css", file)
+GET     /js/*file                  controllers.Assets.at(path="/public/js", file)
+GET     /images/*file              controllers.Assets.at(path="/public/images", file)
+GET     /fonts/*file               controllers.Assets.at(path="/public/fonts", file)
+GET     /plugins/*file             controllers.Assets.at(path="/public/plugins", file)
+
+GET     /*file                     controllers.Assets.versioned(path="/public", file: Asset)

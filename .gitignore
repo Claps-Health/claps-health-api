@@ -1,0 +1,16 @@
+logs
+target
+/.idea
+/.idea_modules
+/.classpath
+/.project
+/.settings
+/RUNNING_PID
+/.scannerwork
+/conf_dev
+/webpack
+/null
+*.json
+*.bak
+*.bat
+*.sh

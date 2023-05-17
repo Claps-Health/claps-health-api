@@ -1,0 +1,15 @@
+[Unit] 
+Description=claps-health-api daemon 
+Requires=network.target
+ 
+[Service] 
+Type=simple 
+WorkingDirectory=/home/phros/ 
+ExecStart=/home/phros/claps-health-api-restart.sh phros
+Restart=always
+User=phros
+RestartSec=30s
+TimeoutStartSec=30s 
+ 
+[Install] 
+WantedBy=default.target 
