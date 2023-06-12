@@ -75,18 +75,23 @@ public class Utils {
 		return encoder.encodeToString(in.getBytes(StandardCharsets.UTF_8));
 	}
 
-	public static Long addSecondsWithUTC(int seconds) {
+	public static long getNowTimeUtcLong(boolean isSecondUnit) {
+		Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
+		return (isSecondUnit)?cal.getTimeInMillis()/1000:cal.getTimeInMillis();
+	}
+
+	public static Long addSecondsWithUTC(int seconds, boolean isSecondUnit) {
 		Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
 		cal.setTime(new Date());
 		cal.add(Calendar.SECOND, seconds);
-		return cal.getTime().getTime()/1000;
+		return  (isSecondUnit)?cal.getTime().getTime()/1000:cal.getTime().getTime();
 	}
 
-	public static Long addDaysWithUTC(int days) {
+	public static Long addDaysWithUTC(int days, boolean isSecondUnit) {
 		Calendar cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
 		cal.setTime(new Date());
 		cal.add(Calendar.HOUR, days * 24);
-		return cal.getTime().getTime()/1000;
+		return  (isSecondUnit)?cal.getTime().getTime()/1000:cal.getTime().getTime();
 	}
 
 }

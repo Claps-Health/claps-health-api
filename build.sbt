@@ -72,6 +72,7 @@ libraryDependencies += "org.apache.commons" % "commons-collections4" % "4.4"
 libraryDependencies += "cafe.cryptography" % "curve25519-elisabeth" % "0.1.0"
 libraryDependencies += "org.junit.jupiter" % "junit-jupiter-api" % "5.9.0" % Test
 libraryDependencies += "com.github.multiformats" % "java-multibase" % "v1.1.1"
+libraryDependencies += "org.iq80.leveldb" % "leveldb" % "0.12"
 
 //libraryDependencies += "net.cloudburo" % "polkadot-java" % "0.1"
 

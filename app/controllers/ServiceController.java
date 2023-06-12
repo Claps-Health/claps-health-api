@@ -11,15 +11,19 @@ import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import jwt.JwtControllerHelper;
-import jwt.VerifiedJwt;
+import models.form.request.challenge.TChallengeRecordAdd;
 import models.form.request.identity.TDidProfileUpdate;
 import models.form.request.identity.TDidRegister;
 import models.form.request.identity.TDidTwitterVerify;
 import models.form.response.MethodResponseError;
+import models.form.response.MethodResponseNoData;
+import models.form.response.challenge.MethodResponseChallengeRecords;
 import models.form.response.identity.MethodResponseIdentityInfo;
 import models.form.response.register.MethodResponseRegisterDid;
 import models.form.response.register.MethodResponseVerifyTwitter;
 import models.jpa.identity.UserIdentity;
+import models.leveldb.LevelDbRecorder;
+import models.leveldb.RecordSet;
 import models.twitter.TwitterApiWrapper;
 import models.twitter.response.TweetInfo;
 import models.twitter.response.TwitterUserInfo;
@@ -40,11 +44,10 @@ import reference.twitter.TwitterSignVerifier;
 import utils.Utils;
 
 import javax.inject.Inject;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
-import static play.libs.Json.toJson;
-
-@Api(value = "claps-health api v1.0.2.2", produces = "application/json")
+@Api(value = "claps-health api v1.1.0", produces = "application/json")
 public class ServiceController extends Controller {
     @Inject
     FormFactory formFactory;
@@ -56,19 +59,30 @@ public class ServiceController extends Controller {
 
     @Inject
     private Config config;
-    private String secret;
 
     private TwitterApiWrapper twitterApiWrapper;
+    private static LevelDbRecorder recorder;
 
     @Inject
-    public ServiceController(EbeanServerProvider ebeanServer) {
+    public ServiceController(EbeanServerProvider ebeanServer) throws IOException {
         Logger.debug("ServiceController Constructor");
-
         this.config= ConfigFactory.load();
-        this.secret = config.getString("play.http.secret.key");
-        this.ebeanServer = ebeanServer;
 
+        initSql(ebeanServer);
+        initRecorder();
         initTwitterApiWrapper();
+    }
+
+    void initSql(EbeanServerProvider ebeanServer) {
+        this.ebeanServer = ebeanServer;
+    }
+
+    void initRecorder() throws IOException {
+        recorder= new LevelDbRecorder("challenge");
+    }
+
+    private String toJson(Object obj) {
+        return Utils.toJson(obj);
     }
 
     void initTwitterApiWrapper() {
@@ -87,7 +101,7 @@ public class ServiceController extends Controller {
      *                 - signature: Signature.
      * @return The user did if success, or give a specific error if failure.
      */
-    @ApiOperation(value = "Register DID", notes = "", response = MethodResponseRegisterDid.class)
+    @ApiOperation(value = "Register a Decentralized Identifier (DID)", notes = "", response = MethodResponseRegisterDid.class)
     @ApiImplicitParams(
             {
                     @ApiImplicitParam(dataType = "models.form.request.identity.TDidRegister", required = true, paramType = "body")
@@ -169,22 +183,20 @@ public class ServiceController extends Controller {
     }
 
     /**
-     * Update user profile.
+     * Get user profile.
      *
-     * @return The user info object if success, or give a specific error if failure.
+     * @return The user info if success, or give a specific error if failure.
      */
-    @ApiOperation(value = "Get User Info (with jwt)", notes = "", response = MethodResponseIdentityInfo.class)
+    @ApiOperation(value = "Get User Info", notes = "", response = MethodResponseIdentityInfo.class)
     @ApiImplicitParams(
             {
                     @ApiImplicitParam(name = "Authorization", value = "JWT", dataType="string", required = true, paramType = "header")
             }
     )
-    public Result getIdentityInfoWithJwt() {
+    public Result getIdentityInfo() {
         return jwtControllerHelper.verify(request(), res -> {
             if (res.left.isPresent()) return ok(toJson(new MethodResponseError(ERROR_ENUM.ERR_AUTH_FAIL)));
-
-            VerifiedJwt verifiedJwt = res.right.get();
-            return ok(toJson(new MethodResponseIdentityInfo(new UserIdentityInfo(UserIdentity.findByDid(verifiedJwt.getSubject())))));
+            return ok(toJson(new MethodResponseIdentityInfo(new UserIdentityInfo(UserIdentity.findByDid(res.right.get().getSubject())))));
         });
     }
 
@@ -199,7 +211,7 @@ public class ServiceController extends Controller {
      *                 - living_city: City of living.
      * @return error equals 0 if success, or give a specific error if failure.
      */
-    @ApiOperation(value = "Update user profile (with jwt)", notes = "", response = MethodResponseIdentityInfo.class)
+    @ApiOperation(value = "Update user profile", notes = "", response = MethodResponseNoData.class)
     @ApiImplicitParams(
             {
                     @ApiImplicitParam(name = "Authorization", value = "JWT", dataType="string", required = true, paramType = "header"),
@@ -207,15 +219,14 @@ public class ServiceController extends Controller {
             }
     )
     @BodyParser.Of(value = BodyParser.Json.class)
-    public Result updateIdentityProfileWithJwt() {
+    public Result updateIdentityProfile() {
         return jwtControllerHelper.verify(request(), res -> {
             if (res.left.isPresent()) return ok(toJson(new MethodResponseError(ERROR_ENUM.ERR_AUTH_FAIL)));
 
             TDidProfileUpdate fUpdate = Json.fromJson(request().body().asJson(), TDidProfileUpdate.class);
             Logger.debug("fUpdate = " + Utils.toJson(fUpdate));
 
-            VerifiedJwt verifiedJwt = res.right.get();
-            UserIdentity ui= UserIdentity.findByDid(verifiedJwt.getSubject());
+            UserIdentity ui= UserIdentity.findByDid(res.right.get().getSubject());
             if(ui==null) return ok(toJson(new MethodResponseError(ERROR_ENUM.ERR_USER_NOT_FOUND)));
 
             ui.setYear_of_birth(fUpdate.getYear_of_birth());
@@ -224,11 +235,75 @@ public class ServiceController extends Controller {
             ui.setLiving_city(fUpdate.getLiving_city());
             ui.update();
 
-            return ok(toJson(new MethodResponseIdentityInfo(new UserIdentityInfo(ui))));
+            return ok(toJson(new MethodResponseNoData()));
+        });
+    }
+
+    /**
+     * Add a record for challenge.
+     *
+     * @param body The body data containing the details.
+     *                 Expected fields:
+     *                 - app_id: The application ID for which to retrieve the challenge records, e.g: mood_jouraling/ reduce_alcohol/ body_pain etc.
+     *                 - data: The application structured data
+     * @return error equals 0 if success, or give a specific error if failure.
+     */
+    @ApiOperation(value = "Add a record for challenge", notes = "", response = MethodResponseNoData.class)
+    @ApiImplicitParams(
+            {
+                    @ApiImplicitParam(name = "Authorization", value = "JWT", dataType="string", required = true, paramType = "header"),
+                    @ApiImplicitParam(dataType = "models.form.request.challenge.TChallengeRecordAdd", required = true, paramType = "body")
+            }
+    )
+    @BodyParser.Of(value = BodyParser.Json.class)
+    public Result addChallengeRecord() {
+        return jwtControllerHelper.verify(request(), res -> {
+            if (res.left.isPresent()) return ok(toJson(new MethodResponseError(ERROR_ENUM.ERR_AUTH_FAIL)));
+
+            TChallengeRecordAdd fAdd = Json.fromJson(request().body().asJson(), TChallengeRecordAdd.class);
+            Logger.debug("fAdd = " + Utils.toJson(fAdd));
+
+            UserIdentity ui= UserIdentity.findByDid(res.right.get().getSubject());
+            if(ui==null) return ok(toJson(new MethodResponseError(ERROR_ENUM.ERR_USER_NOT_FOUND)));
+
+            //check on day limitaion with last record??
+//            RecordSet rs= recorder.getLastRecord(ui.getDid(), fAdd.getApp_id());
+//            if(rs!=null && ....)
+
+            RecordSet rs= new RecordSet(fAdd.getData());
+            recorder.addRecord(ui.getDid(), fAdd.getApp_id(), rs);
+
+            return ok(toJson(new MethodResponseNoData()));
+        });
+    }
+
+    /**
+     * Get the challenge records by time.
+     *
+     * @param app_id       The application ID for which to retrieve the challenge records, e.g: mood_jouraling/ reduce_alcohol/ body_pain etc.
+     * @param time_start     The starting time of the time range, represented as a Unix timestamp.
+     * @return            The records info if success, or give a specific error if failure.
+     */
+    @ApiOperation(value = "Get the challenge records by time", notes = "app_id: mood_jouraling/ reduce_alcohol/ body_pain\r\ntime_start: timestamp(ms)", response = MethodResponseChallengeRecords.class)
+    @ApiImplicitParams(
+            {
+                    @ApiImplicitParam(name = "Authorization", value = "JWT", dataType="string", required = true, paramType = "header"),
+                    @ApiImplicitParam(name = "app_id", value = "app_id", dataType="string", required = true, paramType = "path"),
+                    @ApiImplicitParam(name = "time_start", value = "time_start", dataType="long", required = false, paramType = "path"),
+            }
+    )
+    public Result getChallengeRecordsByTime(String app_id, Long time_start) {
+        return jwtControllerHelper.verify(request(), res -> {
+            if (res.left.isPresent()) return ok(toJson(new MethodResponseError(ERROR_ENUM.ERR_AUTH_FAIL)));
+
+            UserIdentity ui= UserIdentity.findByDid(res.right.get().getSubject());
+            if(ui==null) return ok(toJson(new MethodResponseError(ERROR_ENUM.ERR_USER_NOT_FOUND)));
+            return ok(toJson(new MethodResponseChallengeRecords(RecordSet.searchListByTime(recorder.getRecords(ui.getDid(), app_id), time_start, null))));
         });
     }
 
     public static void terminate() {
         if(ebeanServer !=null) ebeanServer.dispose();
+        if(recorder!=null) recorder.close();
     }
 }

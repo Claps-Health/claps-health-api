@@ -1,31 +1,27 @@
 package reference.jwt;
 
+import com.google.gson.JsonObject;
 import com.strategyobject.substrateclient.common.convert.HexConverter;
 import com.strategyobject.substrateclient.crypto.PublicKey;
 import com.strategyobject.substrateclient.crypto.SecretKey;
+import models.form.request.challenge.TChallengeRecordAdd;
 import models.form.request.identity.TDidProfileUpdate;
+import models.form.response.MethodResponse;
+import models.form.response.MethodResponseNoData;
+import models.form.response.challenge.MethodResponseChallengeRecords;
 import models.form.response.identity.MethodResponseIdentityInfo;
-import org.apache.http.NameValuePair;
-import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.util.Asserts;
+import models.leveldb.RecordAppData;
+import models.leveldb.RecordBlockchainData;
+import models.leveldb.RecordData;
 import org.junit.jupiter.api.Test;
-import play.libs.ws.WSClient;
-import play.libs.ws.WSResponse;
+import reference.error.ERROR_ENUM;
 import reference.sr25519.Sr25519Imp;
 import utils.HttpUtils;
 import utils.Utils;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.ExecutionException;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.fail;
-import static org.junit.jupiter.api.Assertions.*;
-import static play.mvc.Http.Status.OK;
 
 class JwtRs25519TesterTest {
 
@@ -35,23 +31,20 @@ class JwtRs25519TesterTest {
 
     @Test
     void getUser() {
-        String jwt= JwtRs25519Tester.generate(new Sr25519Imp(publicKey, secretKey), subject, Utils.addSecondsWithUTC(-30), Utils.addDaysWithUTC(90));
+        String jwt= JwtRs25519Tester.generate(new Sr25519Imp(publicKey, secretKey), subject, Utils.addSecondsWithUTC(-30, true), Utils.addDaysWithUTC(90, true));
         assertNotNull(jwt);
-        System.out.println("jwt= "+jwt);
 
         //test with local server
-        List<NameValuePair> headers = new ArrayList<>();
-        headers.add(new BasicNameValuePair("Authorization", "Bearer "+jwt));
-        Object res= HttpUtils.httpGet("http://localhost:1111/v1/api/did/user", headers, Object.class);
+        MethodResponseIdentityInfo res= HttpUtils.httpGetWithJwt("http://localhost:1111/v1/api/did/user", null, jwt, MethodResponseIdentityInfo.class);
         assertNotNull(res);
+        assertEquals(((MethodResponse)res).getError(), ERROR_ENUM.ERR_NOERROR.getId());
         System.out.println("res= "+Utils.toJson(res));
     }
 
     @Test
     void updateUserProfile() {
-        String jwt= JwtRs25519Tester.generate(new Sr25519Imp(publicKey, secretKey), subject, Utils.addSecondsWithUTC(-30), Utils.addDaysWithUTC(90));
+        String jwt= JwtRs25519Tester.generate(new Sr25519Imp(publicKey, secretKey), subject, Utils.addSecondsWithUTC(-30, true), Utils.addDaysWithUTC(90, true));
         assertNotNull(jwt);
-        System.out.println("jwt= "+jwt);
 
         //test with local server
         TDidProfileUpdate fUpdate= new TDidProfileUpdate();
@@ -60,10 +53,46 @@ class JwtRs25519TesterTest {
         fUpdate.setLiving_country("USA");
         fUpdate.setLiving_city("San francisco");
 
-        List<NameValuePair> headers = new ArrayList<>();
-        headers.add(new BasicNameValuePair("Authorization", "Bearer "+jwt));
-        Object res= HttpUtils.httpPost("http://localhost:1111/v1/api/did/user/profile/update", headers, fUpdate, Object.class);
+        MethodResponseIdentityInfo res= HttpUtils.httpPostWithJwt("http://localhost:1111/v1/api/did/user/profile/update", null, jwt, fUpdate, MethodResponseIdentityInfo.class);
         assertNotNull(res);
+        assertEquals(((MethodResponse)res).getError(), ERROR_ENUM.ERR_NOERROR.getId());
         System.out.println("res= "+Utils.toJson(res));
     }
+
+    @Test
+    void addRecord() {
+        String jwt= JwtRs25519Tester.generate(new Sr25519Imp(publicKey, secretKey), subject, Utils.addSecondsWithUTC(-30, true), Utils.addDaysWithUTC(90, true));
+        assertNotNull(jwt);
+
+        //test with local server
+        JsonObject jo= new JsonObject();
+        jo.addProperty("mood", "happy");
+
+//        JsonNode jo = new ObjectMapper().createObjectNode();
+//        ((ObjectNode) jo).put("mood", "happy");
+
+        TChallengeRecordAdd fAdd= new TChallengeRecordAdd();
+        fAdd.setApp_id("mood_jouraling");
+        fAdd.setData(new RecordData(new RecordAppData(jo, Utils.getNowTimeUtcLong(false), null), new RecordBlockchainData("0x92354d95c16c860057cf82835a09403d6f21fce1bab1b28ea2182ec4e61c9aa6")));
+
+        //test
+//        TChallengeRecordAdd rAdd = Json.fromJson(Json.parse(Utils.toJson(fAdd)), TChallengeRecordAdd.class);
+//        Logger.debug("rAdd = " + Utils.toJson(rAdd));
+
+        MethodResponseNoData res= HttpUtils.httpPostWithJwt("http://localhost:1111/v1/api/app/challenge/record/add", null, jwt, fAdd, MethodResponseNoData.class);
+        assertNotNull(res);
+        assertEquals(res.getError(), ERROR_ENUM.ERR_NOERROR.getId());
+    }
+
+    @Test
+    void getRecords() {
+        String jwt= JwtRs25519Tester.generate(new Sr25519Imp(publicKey, secretKey), subject, Utils.addSecondsWithUTC(-30, true), Utils.addDaysWithUTC(90, true));
+        assertNotNull(jwt);
+
+        String app_id= "mood_jouraling";
+        MethodResponseChallengeRecords res= HttpUtils.httpGetWithJwt("http://localhost:1111/v1/api/app/challenge/records/time/"+app_id+"/"+Utils.addDaysWithUTC(-30, false), null, jwt, MethodResponseChallengeRecords.class);
+        assertNotNull(res);
+        assertEquals(((MethodResponse)res).getError(), ERROR_ENUM.ERR_NOERROR.getId());
+    }
+
 }

@@ -20,7 +20,7 @@ public class JwtRs25519Tester {
 
         String raw = Utils.convertToBase64String(JWT_HEADER) + "." +  Utils.convertToBase64String(jwtPayload.toString());
         SignatureData signData = sr25519.sign(raw.getBytes(StandardCharsets.UTF_8));
-        System.out.println("signData.getBytes()= "+ Numeric.toHexStringNoPrefix(signData.getBytes()));
+//        System.out.println("signData.getBytes()= "+ Numeric.toHexStringNoPrefix(signData.getBytes()));
         if(signData==null) return null;
         return raw + "." + Utils.convertToBase64String(Numeric.toHexStringNoPrefix(signData.getBytes()));
     }
