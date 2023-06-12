@@ -9,6 +9,7 @@ target
 /.scannerwork
 /conf_dev
 /webpack
+/chdb
 /null
 *.json
 *.bak
